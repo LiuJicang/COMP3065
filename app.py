@@ -20,8 +20,6 @@ GESTURE_ACTIONS = {
     "thumb_left": "Previous track",
     "thumb_up": "Volume up",
     "thumb_down": "Volume down",
-    "index_right": "Seek forward",
-    "index_left": "Seek backward",
 }
 
 
@@ -43,6 +41,7 @@ class GestureMusicPlayerApp:
 
         self._build_ui()
         self.scan_music_files()
+        self.open_initial_track()
         self.start_camera()
         self._schedule_playback_update()
 
@@ -162,10 +161,22 @@ class GestureMusicPlayerApp:
 
         for music_dir in self._music_directories():
             for extension in SUPPORTED_AUDIO_EXTENSIONS:
-                for file_path in glob.glob(str(music_dir / "**" / f"*{extension}"), recursive=True):
+                pattern = str(music_dir / "**" / f"*{extension}")
+                for file_path in glob.glob(pattern, recursive=True):
                     self._add_track_to_playlist(file_path)
 
         self._set_status(f"Scanned {self.playlist_listbox.size()} audio files")
+
+    def open_initial_track(self):
+        if self.player.current_track is None:
+            self._set_status("No audio files found")
+            return
+
+        self.player.open_current_track()
+        self.playlist_listbox.selection_clear(0, tk.END)
+        self.playlist_listbox.selection_set(self.player.current_track_index)
+        self.playlist_listbox.see(self.player.current_track_index)
+        self._set_status(f"Opened {Path(self.player.current_track).name}")
 
     def _music_directories(self):
         home = Path.home()
@@ -246,10 +257,6 @@ class GestureMusicPlayerApp:
         elif gesture == "thumb_down":
             self.player.volume_control(-10)
             self.root.after(0, self.volume_var.set, self.player.volume)
-        elif gesture == "index_right":
-            self.player.seek(+10)
-        elif gesture == "index_left":
-            self.player.seek(-10)
 
         self.root.after(0, self._set_status, f"Gesture: {gesture} -> {action}")
 

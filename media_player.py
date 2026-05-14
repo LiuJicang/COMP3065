@@ -23,7 +23,7 @@ class BaseMediaPlayer:
         self.current_track_index = -1
         self.current_track = None
         self.is_playing = False
-        self.volume = 50
+        self.volume = self._get_initial_volume()
         self.position = 0.0
         self.duration = 0.0
         self.started_at = None
@@ -53,6 +53,17 @@ class BaseMediaPlayer:
             return
         self.current_track_index = index % len(self.playlist)
         self.current_track = self.playlist[self.current_track_index]
+        self.position = 0.0
+        self.started_at = time.time()
+        self.is_playing = True
+        self._open_track(self.current_track)
+
+    def open_current_track(self):
+        if self.current_track_index < 0 and self.playlist:
+            self.current_track_index = 0
+            self.current_track = self.playlist[0]
+        if self.current_track is None:
+            return
         self.position = 0.0
         self.started_at = time.time()
         self.is_playing = True
@@ -111,6 +122,9 @@ class BaseMediaPlayer:
     def _open_track(self, file_path):
         raise NotImplementedError
 
+    def _get_initial_volume(self):
+        return 50
+
     def _toggle_play_pause(self):
         raise NotImplementedError
 
@@ -132,13 +146,26 @@ class WindowsMediaPlayer(BaseMediaPlayer):
     VK_VOLUME_UP = 0xAF
     KEYEVENTF_KEYUP = 0x0002
 
+    def __init__(self):
+        self._endpoint_volume = None
+        self._init_endpoint_volume()
+        super().__init__()
+
     def _open_track(self, file_path):
         os.startfile(file_path)
 
     def _toggle_play_pause(self):
         self._press_key(self.VK_MEDIA_PLAY_PAUSE)
 
+    def _get_initial_volume(self):
+        if self._endpoint_volume is None:
+            return 50
+        return round(self._endpoint_volume.GetMasterVolumeLevelScalar() * 100)
+
     def _set_volume(self, volume, previous_volume):
+        if self._endpoint_volume is not None:
+            self._endpoint_volume.SetMasterVolumeLevelScalar(volume / 100, None)
+            return
         if volume == previous_volume:
             return
         direction = self.VK_VOLUME_UP if volume >= previous_volume else self.VK_VOLUME_DOWN
@@ -168,6 +195,17 @@ class WindowsMediaPlayer(BaseMediaPlayer):
         ctypes.windll.user32.keybd_event(key_code, 0, 0, 0)
         ctypes.windll.user32.keybd_event(key_code, 0, self.KEYEVENTF_KEYUP, 0)
 
+    def _init_endpoint_volume(self):
+        try:
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
+            speakers = AudioUtilities.GetSpeakers()
+            interface = speakers.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            self._endpoint_volume = interface.QueryInterface(IAudioEndpointVolume)
+        except Exception:
+            self._endpoint_volume = None
+
 
 class AppleMusicPlayer(BaseMediaPlayer):
     """Control the built-in macOS Music app with AppleScript."""
@@ -180,6 +218,16 @@ class AppleMusicPlayer(BaseMediaPlayer):
 
     def _toggle_play_pause(self):
         self._osascript('tell application "Music" to playpause')
+
+    def _get_initial_volume(self):
+        try:
+            output = self._osascript(
+                'tell application "Music" to get sound volume',
+                capture_output=True,
+            )
+            return int(output.strip())
+        except Exception:
+            return 50
 
     def _set_volume(self, volume, previous_volume):
         self._osascript(f'tell application "Music" to set sound volume to {volume}')

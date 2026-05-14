@@ -39,8 +39,6 @@ class GestureController:
             "thumb_down": (255, 255, 0),
             "thumb_right": (0, 0, 255),
             "thumb_left": (255, 0, 255),
-            "index_right": (128, 128, 0),
-            "index_left": (0, 128, 128),
         }
 
     def detect_gesture(self, frame):
@@ -79,7 +77,6 @@ class GestureController:
         wrist = landmarks[0]
         thumb_tip = landmarks[4]
         thumb_mid = landmarks[2]
-        index_tip = landmarks[8]
         index_mcp = landmarks[5]
         pinky_mcp = landmarks[17]
 
@@ -111,19 +108,6 @@ class GestureController:
             return "thumb_right"
         if thumb_left and thumb_tip.x < wrist.x - width_threshold and extended_count == 0:
             return "thumb_left"
-        if (
-            fingers_extended[0]
-            and not any(fingers_extended[1:])
-            and index_tip.x > wrist.x + width_threshold * 0.7
-        ):
-            return "index_right"
-        if (
-            fingers_extended[0]
-            and not any(fingers_extended[1:])
-            and index_tip.x < wrist.x - width_threshold * 0.7
-        ):
-            return "index_left"
-
         return None
 
     @staticmethod

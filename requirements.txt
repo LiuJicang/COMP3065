@@ -3,3 +3,5 @@ numpy==1.26.4
 opencv-python==4.7.0.72
 Pillow==10.4.0
 protobuf>=4.25.3,<5
+pycaw; platform_system == "Windows"
+comtypes; platform_system == "Windows"
