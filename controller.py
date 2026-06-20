@@ -7,9 +7,9 @@ import mediapipe as mp
 class GestureController:
     """Detect stable hand gestures from OpenCV frames.
 
-    The gesture rules are intentionally kept equivalent to the original
-    project: fist, thumb directions, and index-finger directions all map to
-    the same raw gesture names used by the app.
+    Finger bending is determined from the direction change between a finger's
+    base-to-middle segment and middle-to-tip segment. Gesture classification
+    then uses the requested thumb slope ranges.
     """
 
     def __init__(self):
@@ -74,55 +74,63 @@ class GestureController:
         return None, output_frame
 
     def _classify_raw_gesture(self, landmarks):
-        wrist = landmarks[0]
-        thumb_tip = landmarks[4]
-        thumb_mid = landmarks[2]
-        index_mcp = landmarks[5]
-        pinky_mcp = landmarks[17]
+        thumb_bent = self._is_finger_bent(landmarks, 1, 2, 4)
+        other_fingers_bent = all(
+            self._is_finger_bent(landmarks, base_id, middle_id, tip_id)
+            for base_id, middle_id, tip_id in (
+                (5, 6, 8),
+                (9, 10, 12),
+                (13, 14, 16),
+                (17, 18, 20),
+            )
+        )
 
-        hand_width = abs(pinky_mcp.x - index_mcp.x)
-        width_threshold = hand_width * 0.8
-
-        fingers_extended = [
-            self._is_finger_extended(landmarks, 5, 6, 8),
-            self._is_finger_extended(landmarks, 9, 10, 12),
-            self._is_finger_extended(landmarks, 13, 14, 16),
-            self._is_finger_extended(landmarks, 17, 18, 20),
-        ]
-        extended_count = sum(fingers_extended)
-
-        thumb_vec_x = thumb_tip.x - thumb_mid.x
-        thumb_vec_y = thumb_tip.y - thumb_mid.y
-        thumb_right = thumb_vec_x > 0 and abs(thumb_vec_x) > abs(thumb_vec_y) * 1.5
-        thumb_left = thumb_vec_x < 0 and abs(thumb_vec_x) > abs(thumb_vec_y) * 1.5
-        thumb_up = thumb_tip.y < thumb_mid.y - 0.05
-        thumb_down = thumb_tip.y > thumb_mid.y + 0.05
-
-        if extended_count == 0 and not (thumb_right or thumb_left):
+        if thumb_bent and other_fingers_bent:
             return "fist"
-        if thumb_up and thumb_tip.y < wrist.y - 0.15 and extended_count <= 1:
-            return "thumb_up"
-        if thumb_down and extended_count <= 1:
-            return "thumb_down"
-        if thumb_right and thumb_tip.x > wrist.x + width_threshold and extended_count == 0:
+
+        if thumb_bent or not other_fingers_bent:
+            return None
+
+        thumb_slope = self._slope(landmarks[2], landmarks[4])
+        if 0 < thumb_slope < 1:
             return "thumb_right"
-        if thumb_left and thumb_tip.x < wrist.x - width_threshold and extended_count == 0:
+        if -1 < thumb_slope < 0:
             return "thumb_left"
+        if thumb_slope > 1:
+            return "thumb_up"
+        if thumb_slope < -1:
+            return "thumb_down"
         return None
 
     @staticmethod
-    def _is_finger_extended(landmarks, base_id, mid_id, tip_id):
+    def _is_finger_bent(landmarks, base_id, middle_id, tip_id):
         finger_base = landmarks[base_id]
-        finger_mid = landmarks[mid_id]
+        finger_middle = landmarks[middle_id]
         finger_tip = landmarks[tip_id]
 
-        base_to_mid_dist = (
-            (finger_mid.x - finger_base.x) ** 2 + (finger_mid.y - finger_base.y) ** 2
-        ) ** 0.5
-        mid_to_tip_dist = (
-            (finger_tip.x - finger_mid.x) ** 2 + (finger_tip.y - finger_mid.y) ** 2
-        ) ** 0.5
-        return mid_to_tip_dist > base_to_mid_dist * 0.7 and finger_tip.y < finger_mid.y
+        y_direction_changed = (
+            (finger_tip.y - finger_middle.y)
+            * (finger_middle.y - finger_base.y)
+            < 0
+        )
+        x_direction_changed = (
+            (finger_tip.x - finger_middle.x)
+            * (finger_middle.x - finger_base.x)
+            < 0
+        )
+        return y_direction_changed or x_direction_changed
+
+    @staticmethod
+    def _slope(start, end):
+        delta_x = end.x - start.x
+        delta_y = end.y - start.y
+        if delta_x == 0:
+            if delta_y > 0:
+                return float("inf")
+            if delta_y < 0:
+                return float("-inf")
+            return 0.0
+        return delta_y / delta_x
 
     def _remember(self, raw_gesture):
         self.gesture_history.append(raw_gesture)

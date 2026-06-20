@@ -1,5 +1,14 @@
 # Change Log
 
+## 2026-06-20
+
+- Replaced the hand-gesture classification rules with a joint-direction model:
+  - A finger is bent when either the x-direction or y-direction reverses
+    between its base-to-middle and middle-to-tip segments.
+  - A fist requires all five fingers to be bent.
+  - Each thumb direction requires a non-bent thumb, the other four fingers to
+    be bent, and uses the slope of the line from landmark 2 to landmark 4.
+
 ## 2026-05-14
 
 - Refactored the project into a cross-platform structure:
